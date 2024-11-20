@@ -14,8 +14,12 @@
 ```bash
 pip install qianfan
 ```
+
 ##环境变量配置
+
 ###在运行代码前，设置环境变量：
+
+
 os.environ["QIANFAN_ACCESS_KEY"] = "your_iam_ak"
 os.environ["QIANFAN_SECRET_KEY"] = "your_iam_sk"
 
