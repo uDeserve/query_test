@@ -15,16 +15,16 @@
 pip install qianfan
 ```
 
-##环境变量配置
+## 环境变量配置
 
-###在运行代码前，设置环境变量：
+### 在运行代码前，设置环境变量：
 
 
 os.environ["QIANFAN_ACCESS_KEY"] = "your_iam_ak"
 os.environ["QIANFAN_SECRET_KEY"] = "your_iam_sk"
 
-##使用方法
-###示例代码
+## 使用方法
+### 示例代码
 ```if __name__ == '__main__':
     image_folder = "images"  # 图像文件夹路径
     message_path = "message2.txt"  # 消息文件路径
@@ -38,9 +38,11 @@ os.environ["QIANFAN_SECRET_KEY"] = "your_iam_sk"
     for result in results:
         print(result)
 ```
-##输入格式
-###图像文件夹: 包含图像文件（.jpg, .jpeg, .png, .bmp）。
-###消息文件: 包含用于分析的提示消息的文本文件。
+## 输入格式
+### 图像文件夹: 
+包含图像文件（.jpg, .jpeg, .png, .bmp）。
+### 消息文件: 
+包含用于分析的提示消息的文本文件。
 
-##输出
+## 输出
 控制台将输出每张图像的分析结果。
