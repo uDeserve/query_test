@@ -12,7 +12,7 @@
 安装命令：
 
 ```bash
-pip install qianfan
+pip install qianfan```
 
 ##环境变量配置
 ###在运行代码前，设置环境变量：
