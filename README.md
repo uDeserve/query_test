@@ -19,10 +19,10 @@ pip install qianfan
 
 ### 在运行代码前，设置环境变量：
 
-
+```
 os.environ["QIANFAN_ACCESS_KEY"] = "your_iam_ak"
 os.environ["QIANFAN_SECRET_KEY"] = "your_iam_sk"
-
+```
 ## 使用方法
 ### 示例代码
 ```if __name__ == '__main__':
