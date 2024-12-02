@@ -1,0 +1,274 @@
+import numpy as np
+import mne
+import matplotlib.pyplot as plt
+import os
+import sklearn
+from sklearn.model_selection import train_test_split
+from mne.time_frequency import psd_array_welch
+from mne.time_frequency import tfr_morlet
+from scipy.fft import fft, fftfreq
+from scipy.signal import welch
+from scipy.signal import stft
+#切换存储目录
+new_directory = 'D:/EEG'
+os.chdir(new_directory)#change direction
+'''数据信息
+    BNCI2014001
+    <Info | 8 non-empty values
+     bads: []
+     ch_names: 'Fz', 'FC3', 'FC1', 'FCz', 'FC2', 'FC4', 'C5', 'C3', 'C1', 'Cz', 'C2', 'C4', 'C6', 'CP3', 'CP1', 'CPz', 'CP2', 'CP4', 'P1', 'Pz', 'P2', 'POz'
+     chs: 22 EEG
+     custom_ref_applied: False
+     dig: 25 items (3 Cardinal, 22 EEG)
+     highpass: 8.0 Hz
+     lowpass: 32.0 Hz
+     meas_date: unspecified
+     nchan: 22
+     projs: []
+     sfreq: 250.0 Hz
+    >
+
+    BNCI2014002
+    <Info | 7 non-empty values
+     bads: []
+     ch_names: 'EEG1', 'EEG2', 'EEG3', 'EEG4', 'EEG5', 'EEG6', 'EEG7', 'EEG8', 'EEG9', 'EEG10', 'EEG11', 'EEG12', 'EEG13', 'EEG14', 'EEG15'
+     chs: 15 EEG
+     custom_ref_applied: False
+     highpass: 8.0 Hz
+     lowpass: 32.0 Hz
+     meas_date: unspecified
+     nchan: 15
+     projs: []
+     sfreq: 512.0 Hz
+    >
+
+    BNCI2015001
+    <Info | 8 non-empty values
+     bads: []
+     ch_names: 'FC3', 'FCz', 'FC4', 'C5', 'C3', 'C1', 'Cz', 'C2', 'C4', 'C6', 'CP3', 'CPz', 'CP4'
+     chs: 13 EEG
+     custom_ref_applied: False
+     dig: 16 items (3 Cardinal, 13 EEG)
+     highpass: 8.0 Hz
+     lowpass: 32.0 Hz
+     meas_date: unspecified
+     nchan: 13
+     projs: []
+     sfreq: 512.0 Hz
+    >
+'''
+data= np.load('D:\EEG\data\BNCI2014001\X.npy')
+labels=np.load('D:\EEG\data\BNCI2014001\labels.npy')#与epochs数目同维度，标记每个事件的标签
+sfreq = 250.0  # 采样率为 250 Hz
+n_channels = 22  # 通道数量为 22
+n_times = 1001  # 每个 trial 的时间点数量
+n_trials = data.shape[0]  # trial 的数量
+ch_types = ['eeg'] * n_channels
+ch_names=['Fz', 'FC3', 'FC1', 'FCz', 'FC2', 'FC4', 'C5', 'C3', 'C1', 'Cz', 'C2', 'C4', 'C6', 'CP3', 'CP1', 'CPz', 'CP2', 'CP4', 'P1', 'Pz', 'P2', 'POz']
+info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+
+data_reshaped = data.reshape((n_trials * n_times, n_channels)).T  
+# 创建RawArray对象，其数据形态通常是(n_channels, n_samples)，以通道为核心
+raw = mne.io.RawArray(data_reshaped, info)
+
+n_trials = data.shape[0]  # trial 的数量
+n_times = data.shape[2]  # 每个 trial 的时间点数量
+# 创建event id，构建一个dictionary，完成标签编码
+event_id=dict(feet=1,left_hand=2,right_hand=3,tongue=4)
+#events数据建立,将epoch联通。需要牢记脑电数据是连续的，epoch是人为划分，epochs对象的第一列为连续的拼接后的事件时间点
+tmin=0
+events = np.array([
+    [trial_start, 0, event_id[label]]  # 对于每个trial的开始时间，分配一个id
+    for trial_start, label in zip(np.arange(0, n_trials * n_times, n_times), labels)#假设时间序列连续，用n_times 为迭代长度从0开始生成等差数列
+])
+'''zip 是 Python 中的一个内置函数，它用于将多个可迭代对象（如列表、元组、字符串等）中的元素打包成一个个元组，然后返回由这些元组组成的迭代器
+。zip 函数在处理多个相关联的序列时非常有用，因为它允许你同时迭代多个序列。'''
+
+#构建epochs array，Epochs对象用于表示围绕特定事件的短时间片段，其数据形态通常是(n_epochs, n_channels, n_samples)
+epochs = mne.EpochsArray(data, info, events, tmin, event_id)
+save_path = 'D:\EEG\my_images_frequency'
+ch_names = epochs.info['ch_names']
+def plot_time_domain(epoch_data, sfreq, epoch_idx, save_path, labels,ch_names):
+    """
+    绘制某个 epoch 的时域图（使用实际通道名称）。
+    
+    参数:
+    - epoch_data: (n_channels, n_times) 该 epoch 的数据
+    - sfreq: 采样率（Hz）
+    - epoch_idx: 该 epoch 的编号
+    - save_path: 保存图片的路径
+    - labels: 每个 epoch 的标签列表
+    """
+    mylabel = labels[epoch_idx]
+    time = np.arange(epoch_data.shape[1]) / sfreq  # 时间轴
+    n_channels = epoch_data.shape[0]
+    
+    plt.figure(figsize=(12, 8))
+    
+    # 生成每个通道的垂直偏移量
+    offsets = np.arange(n_channels) * 100  # 假设每个通道偏移100单位
+    
+    for ch in range(n_channels):
+        plt.plot(time, epoch_data[ch, :] + offsets[ch], label=ch_names[ch], color='b')
+        plt.ylabel('Amplitude')  # 只在第一个子图显示 Y 轴标签
+        # 只在最底部的子图显示 X 轴标签
+        if ch == n_channels - 1:
+            plt.xlabel('Time (s)')
+    
+    # 设置 Y 轴的刻度和标签
+    plt.yticks(offsets, ch_names)
+    
+    plt.tight_layout()
+    plt.suptitle(f'Epoch {epoch_idx} - Time Domain', fontsize=16)
+    plt.subplots_adjust(top=0.9)
+    plt.savefig(f'{save_path}/epoch_{epoch_idx}_time_domain_{mylabel}.png')
+    plt.close()
+
+def plot_spectrum(epoch_data, sfreq, epoch_idx, save_path, labels, ch_names):
+    """
+    绘制某个epoch的频谱图（每个通道的频率分布）。
+    
+    参数:
+    - epoch_data: (n_channels, n_times) 该 epoch 的数据
+    - sfreq: 采样率（Hz）
+    - epoch_idx: 该 epoch 的编号
+    - save_path: 保存图片的路径
+    - labels: 每个 epoch 的标签列表
+    - ch_names: 通道名称列表
+    """
+    mylabel = labels[epoch_idx]
+    n_channels, n_times = epoch_data.shape
+    freqs = fftfreq(n_times, 1 / sfreq)  # 计算频率轴
+    
+    # 预定义整个图形的大小
+    plt.figure(figsize=(12, 15))
+    
+    # 为每个通道创建一个新的子图
+    for ch in range(n_channels):
+        # 计算正频率部分的FFT
+        fft_vals = fft(epoch_data[ch, :])
+        fft_vals = np.abs(fft_vals[:n_times // 2])  # 只保留正频率部分
+        freqs_pos = freqs[:n_times // 2]  # 正频率
+        
+        # 在子图中绘制频谱，使用对数尺度
+        ax = plt.subplot(n_channels, 1, ch+1 )
+        ax.semilogy(freqs_pos, fft_vals, color='blue')
+        ax.set_title(ch_names[ch], loc='left')  # 将标题移动到左侧
+        ax.set_yticks([])  # 隐藏Y轴刻度
+        ax.set_xlim(6,36)
+        if ch == n_channels - 1:
+            plt.xlabel('Frequency (Hz)')  # 只在最后一个子图中添加X轴标签
+        if ch==0:
+            plt.ylabel('power')
+        if ch < n_channels - 1:  # 除了最后一个子图，其他子图的X轴刻度不显示
+            ax.set_xticks([])
+    # 调整布局
+    plt.tight_layout()
+    plt.suptitle(f'Epoch {epoch_idx} - Frequency Spectrum ', fontsize=10, y=1)
+    
+    # 保存图像
+    plt.savefig(f'{save_path}/epoch_{epoch_idx}_spectrum_{mylabel}.png', dpi=300)  # 设置分辨率
+    plt.close()
+
+
+def plot_psd(epoch_data, sfreq, epoch_idx, save_path,labels,ch_names):
+    """
+    绘制某个epoch的功率谱密度（PSD）图。
+    
+    参数:
+    - epoch_data: (n_channels, n_times) 该 epoch 的数据
+    - sfreq: 采样率（Hz）
+    - epoch_idx: 该 epoch 的编号
+    - save_path: 保存图片的路径
+    """
+    mylabel=labels[epoch_idx]
+    plt.figure(figsize=(12, 15))
+    n_channels = epoch_data.shape[0]
+    
+    for ch in range(n_channels):
+        f, Pxx = welch(epoch_data[ch, :], sfreq, nperseg=512)  # 使用Welch方法计算PSD
+        mask = (f >= 6) & (f <= 36)
+        f = f[mask]
+        Pxx = Pxx[mask]
+        ax=plt.subplot(n_channels, 1, ch + 1)
+        ax.semilogy(f, Pxx, label=f'{ch_names[ch]}')#对数显示强度
+        ax.set_xlim(6,36)
+        ax.set_title(ch_names[ch], loc='left')  # 将标题移动到左侧
+        ax.set_yticks([])  # 隐藏Y轴刻度
+        plt.xticks(np.arange(6, 36, 1), fontsize=8)  # 减小X轴标签的字体大小
+        if ch == n_channels - 1:
+            plt.xlabel('Frequency (Hz)')  # 只在最后一个子图中添加X轴标签
+        if ch==0:
+            plt.ylabel('μV^2/Hz')
+        if ch < n_channels - 1:  # 除了最后一个子图，其他子图的X轴刻度不显示
+            ax.set_xticks([])
+    plt.tight_layout()#布局变化
+    plt.suptitle(f'Epoch {epoch_idx}-psd', fontsize=16)
+    plt.subplots_adjust(top=0.9)
+    plt.savefig(f'{save_path}/epoch_{epoch_idx}_{mylabel}psd.png')
+    plt.close()
+
+def plot_time_frequency(epoch_data, sfreq, epoch_idx, save_path, ch_names, labels):
+    """
+    绘制某个epoch的时频图。
+    """
+    mylabel = labels[epoch_idx]
+    n_channels, n_times = epoch_data.shape
+    plt.figure(figsize=(15, 18))
+    
+    # 为每个通道创建一个新的子图
+    for ch in range(n_channels):
+        ax = plt.subplot(n_channels, 1, ch + 1)  # 创建子图并获取轴对象
+        # 对每个通道的数据进行STFT
+        nfft = 256  # FFT窗口大小
+        fs = sfreq  # 采样频率
+        noverlap = 128  # 窗口重叠大小
+        f, t, Zxx = stft(epoch_data[ch, :], fs=fs, nperseg=nfft, noverlap=noverlap)
+        
+        # 绘制时频图
+        ax.pcolormesh(t, f, np.abs(Zxx), shading='gouraud')
+        ax.set_title(ch_names[ch], loc='left')  # 将标题移动到左侧
+        ax.set_xticks(np.arange(0, n_times / sfreq + 1, 10 / sfreq))  # 设置X轴刻度
+        if ch == n_channels - 1:
+            ax.set_xlabel('Time (sec)')  # 只在最后一个子图中添加X轴标签
+        if ch == 0:
+            ax.set_ylabel('Frequency (Hz)')
+        if ch < n_channels - 1:  # 除了最后一个子图，其他子图的X轴刻度不显示
+            ax.set_xticks([])
+        ax.set_ylim(0, fs / 2)  # 只显示正频率
+        
+
+    # 调整布局
+    plt.tight_layout()
+    plt.suptitle(f'Epoch {epoch_idx} - Time-Frequency Spectrum {mylabel}', fontsize=16)
+    
+    # 保存图像
+    plt.savefig(f'{save_path}/epoch_{epoch_idx}_time_frequency_{mylabel}.png', dpi=300)
+    plt.close()
+    
+
+def save_plots(epochs, N, save_path,labels):
+    """
+    生成并保存前 N 个 epoch 的时域图、频谱图和 PSD 图。
+    
+    参数:
+    - epochs: MNE.Epochs 对象
+    - N: 要处理的前 N 个 epoch
+    - save_path: 图片保存路径
+    """
+    # 获取数据，形状为 (n_epochs, n_channels, n_times)
+    data = epochs.get_data()
+    # 获取采样率
+    sfreq = epochs.info['sfreq']
+    ch_names = epochs.info['ch_names']
+    for epoch_idx in range(min(N, data.shape[0])):
+        epoch_data = data[epoch_idx]  # 提取第 `epoch_idx` 个 epoch 的数据
+        if labels[epoch_idx] == 'left_hand' or labels[epoch_idx] == 'right_hand':
+            #plot_time_domain(epoch_data, sfreq, epoch_idx, save_path,labels,ch_names)
+            plot_spectrum(epoch_data, sfreq, epoch_idx, save_path,labels,ch_names)
+            #plot_psd(epoch_data, sfreq, epoch_idx, save_path,labels,ch_names)
+           
+
+N = 576 # 处理前 N个 epoch
+save_plots(epochs, N, save_path,labels)
+print(f"前 {N} 个 epoch 的图像已保存到 {save_path}")
