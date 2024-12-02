@@ -1,0 +1,105 @@
+import os
+import openai
+import base64
+from openai import OpenAI
+
+model_id = "gpt-4o"
+def image_to_base64(image_path):
+    # 读取图像文件并将其转换为 Base64 编码字符串
+    with open(image_path, "rb") as image_file:
+        # 读取图像文件的二进制内容
+        image_data = image_file.read()
+        # 将二进制数据转换为 Base64 编码
+        base64_encoded_data = base64.b64encode(image_data)
+        # 将编码后的数据从字节串转换为字符串
+        base64_string = base64_encoded_data.decode('utf-8')
+        return base64_string
+
+
+# 设置API密钥
+client = OpenAI(
+    api_key="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"
+)
+# 读取文本内容
+with open("test.txt", "r", encoding="utf-8") as text_file:
+    text_content = text_file.read().strip()
+
+# 获取图像目录下的所有文件
+image_directory = "images"
+image_files = [f for f in os.listdir(image_directory) if "spectrum" in f and f.endswith(('.png', '.jpg', '.jpeg'))]
+
+file_name_info = {}
+output_info = {}
+results = []
+# 依次处理每个图像文件
+for image_file in image_files:
+    image_path = os.path.join(image_directory, image_file)
+    img_b64_str = image_to_base64(image_path)
+    img_type = "image/jpeg" if image_file.endswith(".jpg") or image_file.endswith(".jpeg") else "image/png"
+    # 调用 API 接口生成响应
+    # 获取文件名
+    file_name = os.path.basename(image_path)
+
+    # 检查文件名中是否包含“left”或“right”
+    if "left" in file_name.lower():
+        file_name_info[file_name] = "left"
+    elif "right" in file_name.lower():
+        file_name_info[file_name] = "right"
+    else:
+        file_name_info[file_name] = "unknown"
+
+    response = client.chat.completions.create(
+        model=model_id,
+        messages=[
+            {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": text_content},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{img_type};base64,{img_b64_str}"},
+                        },
+                    ],
+            }
+        ],
+    )
+    # 打印响应
+    response_content = response.choices[0].message.content
+    with open('output.txt', 'a') as f:  # 'a'模式是追加写入
+        output_content = f"Model: {model_id}, Image: {image_file},\n Query: {text_content},\n Response: {response_content}\n"
+
+        # 打印响应到控制台
+        print(output_content)
+
+        # 同时写入到文件
+        f.write(output_content)
+        f.write("\n")
+        # 打印文件名信息
+
+    # 假设response内容为字符串，存储在response_content中
+    response_content = response.choices[0].message.content
+
+    # 在response内容中查找“左”和“右”出现的索引
+    left_index = response_content.rfind("左")  # 从右往左找“左”
+    right_index = response_content.rfind("右")  # 从右往左找“右”
+
+    # 判断哪个字的索引更小，更新output_info中的key值
+    if left_index != -1 and (right_index == -1 or left_index < right_index):
+        output_info[file_name] = "left"
+    elif right_index != -1:
+        output_info[file_name] = "right"
+    else:
+        output_info[file_name] = "unknown"  # 如果都没找到，标记为unknown
+    # 比较output_info和file_name_info
+    if output_info.get(file_name) == file_name_info[file_name]:
+        results.append(True)  # 结果正确
+    else:
+        results.append(False)  # 结果错误
+
+# 计算正确率
+correct_count = sum(results)  # 计算True的数量
+total_queries = len(results)  # 查询总数
+accuracy = correct_count / total_queries if total_queries > 0 else 0  # 防止除以零
+
+# 输出正确率
+print(f"查询正确率: {accuracy * 100:.2f}%")
