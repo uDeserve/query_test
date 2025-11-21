@@ -18,7 +18,7 @@ def image_to_base64(image_path):
 
 # 设置API密钥
 client = OpenAI(
-    api_key="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"
+    api_key=""
 )
 # 读取文本内容
 with open("test.txt", "r", encoding="utf-8") as text_file:
@@ -102,4 +102,5 @@ total_queries = len(results)  # 查询总数
 accuracy = correct_count / total_queries if total_queries > 0 else 0  # 防止除以零
 
 # 输出正确率
+
 print(f"查询正确率: {accuracy * 100:.2f}%")
